@@ -8,6 +8,9 @@ export interface Product {
   category: string;
   merchant: string;
   source: 'demo' | 'channel3';
+  imageUrl?: string;
+  productUrl?: string;
+  availability?: string;
   attributes: { durability: number; portability: number; value: number };
 }
 
@@ -15,6 +18,7 @@ export interface RecommendationRequest {
   budgetCents: number;
   requirements: string;
   priorities: Priority[];
+  mode?: 'demo' | 'live';
 }
 
 export interface RecommendationItem extends Product { reason: string }
@@ -26,6 +30,7 @@ export interface RecommendationResult {
   summary: string;
   source: 'workers-ai' | 'deterministic-fallback';
   notice: string;
+  mode: 'demo' | 'live';
 }
 
 export interface CheckoutRequest { productIds: string[] }

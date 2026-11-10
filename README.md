@@ -15,7 +15,8 @@ Most shopping experiences optimise for conversion and basket growth. NeedWise st
 - Natural-language needs and affordability, durability, or portability priorities
 - Deterministic basket selection that cannot exceed the stated maximum
 - Optional Cloudflare Workers AI explanations with a rules-based fallback
-- Clearly labelled demonstration product catalogue
+- Channel3 live product discovery across retailer catalogues, with source, price, image, availability, and retailer links
+- A separately labelled demonstration catalogue for PayPal Sandbox
 - Editable basket and live remaining-budget indicator
 - Real PayPal Orders v2 Sandbox create, redirect, and capture workflow
 - Duplicate-callback-safe capture handling
@@ -63,7 +64,7 @@ Secrets belong in `.dev.vars` locally and in Cloudflare Worker secrets when depl
 | --- | --- | --- |
 | `PAYPAL_CLIENT_ID` | For checkout | Sandbox REST app client ID |
 | `PAYPAL_CLIENT_SECRET` | For checkout | Sandbox REST app secret |
-| `CHANNEL3_API_KEY` | No | Reserved for the optional product provider; not yet implemented |
+| `CHANNEL3_API_KEY` | For live discovery | Channel3 developer API key, stored only as a Worker secret |
 
 Non-secret configuration is in `wrangler.jsonc`: `PAYPAL_ENVIRONMENT` is fixed to `sandbox`, `APP_URL` controls PayPal return/cancel URLs, and the `AI` and `ASSETS` bindings connect Cloudflare services.
 
@@ -77,6 +78,12 @@ npm test             # unit tests
 npm run build        # production build
 npm run deploy       # deploy to the configured Worker (changes remote state)
 ```
+
+## Channel3 live discovery
+
+NeedWise sends natural-language searches server-side to Channel3's documented `POST https://api.trychannel3.com/v1/search` endpoint using the `x-api-key` header. The Worker normalizes Channel3 products and their USD offers, removes entries without usable prices or links, applies the maximum budget in cents, and exposes the retailer URL. Results are labelled **Live catalogue results**. Shipping, tax, availability, and price changes remain the retailer's responsibility.
+
+Configure locally with `.dev.vars` or deploy with `npx wrangler secret put CHANNEL3_API_KEY`. Search the default study request in **Discover real products** mode to reproduce a live search. Without the key, the app still supports the demo mode but live mode reports a configuration error.
 
 ## PayPal Sandbox setup
 
@@ -107,8 +114,8 @@ Add final desktop and mobile captures to `docs/images/` after the credentialled 
 
 ## Known limitations
 
-- Product information is a static demonstration catalogue, not live inventory.
-- Channel3 support is represented by a provider boundary but is not implemented.
+- Live catalogue results are not purchasable through NeedWise's PayPal merchant account; users follow the retailer link.
+- PayPal Sandbox uses only server-owned demonstration product IDs and prices.
 - The stateless Worker relies on PayPal's order status and request idempotency; it stores no order history.
 - Taxes, shipping, refunds, localization, and multiple currencies are outside this prototype.
 - A credentialled PayPal Sandbox transaction and remote Workers AI run still require owner verification.

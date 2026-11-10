@@ -23,14 +23,15 @@ The most important design challenge was keeping AI useful without letting it inv
 - A coherent, accessible shopping-planner experience
 - Server-enforced budgets and server-calculated checkout totals
 - Graceful AI failure behaviour and transparent demo-data labelling
-- A complete PayPal Sandbox create/approve/capture implementation
+- Meaningful Channel3 integration using live search, normalized offers, retailer links, and budget-aware selection
+- A complete PayPal Sandbox create/approve/capture implementation kept separate from live retailers
 - Automated tests for budget, AI, and payment failure paths
 
 Before submission, add only after verification: `[Completed a full PayPal Sandbox transaction and deployed the tested build at URL.]`
 
 ## What we learned
 
-AI is most trustworthy here when it communicates decisions rather than controls financial facts. PayPal's approval step also reinforces our product principle: the user sees the exact amount and makes the final decision.
+AI is most trustworthy here when it interprets and communicates decisions rather than controls product facts or financial arithmetic. Channel3 lets the experience use real catalogue data without pretending NeedWise represents those retailers. PayPal's approval step also reinforces our product principle: the user sees the exact amount and makes the final decision.
 
 ## What's next
 
