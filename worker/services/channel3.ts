@@ -2,7 +2,8 @@ import type { Product } from '../types';
 
 const endpoint = 'https://api.trychannel3.com/v1/search';
 const cacheTtlMs = 60_000;
-const cache = new Map<string, { expiresAt: number; products: Product[] }>();
+const cache = new Map<string, { expiresAt: number; result: NormalizedChannel3Result }>();
+const maxCacheEntries = 100;
 
 export class Channel3Error extends Error {
   constructor(message: string, public status = 502) {
@@ -14,7 +15,9 @@ type Channel3Image = { url?: unknown; cleaned_url?: unknown; is_main_image?: unk
 type Channel3Offer = {
   url?: unknown;
   domain?: unknown;
-  price?: { price?: unknown; currency?: unknown; availability?: unknown } | null;
+  price?: { amount?: unknown; price?: unknown; currency?: unknown } | null;
+  availability?: unknown;
+  condition?: unknown;
 };
 type Channel3Product = {
   id?: unknown;
@@ -33,24 +36,35 @@ export interface NormalizedChannel3Result {
 
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 
+function safeHttpsUrl(value: unknown) {
+  const candidate = text(value);
+  if (!candidate) return undefined;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === 'https:' ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function firstImage(images: unknown) {
   if (!Array.isArray(images)) return undefined;
   const image = images.find((item) => item && typeof item === 'object' && (item as Channel3Image).is_main_image === true) ?? images[0];
   if (!image || typeof image !== 'object') return undefined;
-  const candidate = text((image as Channel3Image).cleaned_url) || text((image as Channel3Image).url);
-  return candidate || undefined;
+  return safeHttpsUrl((image as Channel3Image).cleaned_url) ?? safeHttpsUrl((image as Channel3Image).url);
 }
 
 function normalizeOffer(offer: unknown) {
   if (!offer || typeof offer !== 'object') return undefined;
   const value = offer as Channel3Offer;
   const price = value.price;
-  if (!price || typeof price !== 'object' || text(price.currency).toUpperCase() !== 'USD' || typeof price.price !== 'number' || !Number.isFinite(price.price) || price.price < 0) return undefined;
-  const cents = Math.round(price.price * 100);
+  const amount = price && typeof price === 'object' ? (typeof price.amount === 'number' ? price.amount : price.price) : undefined;
+  if (!price || typeof price !== 'object' || text(price.currency).toUpperCase() !== 'USD' || typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) return undefined;
+  const cents = Math.round(amount * 100);
   if (!Number.isSafeInteger(cents)) return undefined;
-  const url = text(value.url);
+  const url = safeHttpsUrl(value.url);
   if (!url) return undefined;
-  return { cents, url, domain: text(value.domain) || 'Retailer', availability: text(price.availability) || 'Unknown' };
+  return { cents, url, domain: text(value.domain) || new URL(url).hostname, availability: text(value.availability) || 'Unknown', condition: text(value.condition) || 'unknown' };
 }
 
 export function normalizeChannel3Response(payload: unknown): NormalizedChannel3Result {
@@ -62,7 +76,8 @@ export function normalizeChannel3Response(payload: unknown): NormalizedChannel3R
   for (const raw of products) {
     const id = text(raw?.id);
     const name = text(raw?.title);
-    const offer = Array.isArray(raw?.offers) ? raw.offers.map(normalizeOffer).find(Boolean) : undefined;
+    const offers = Array.isArray(raw?.offers) ? raw.offers.map(normalizeOffer).filter((offer): offer is NonNullable<ReturnType<typeof normalizeOffer>> => Boolean(offer)) : [];
+    const offer = offers.filter((item) => item.availability === 'InStock').sort((a, b) => a.cents - b.cents)[0];
     if (!id || !name || !offer || seen.has(id)) {
       skipped++;
       continue;
@@ -91,14 +106,15 @@ export async function searchChannel3(apiKey: string | undefined, query: string, 
   if (!apiKey) throw new Channel3Error('Live catalogue search is not configured. Add CHANNEL3_API_KEY to the Worker.', 503);
   const key = `${query.toLowerCase()}|${budgetCents}`;
   const cached = cache.get(key);
-  if (cached && cached.expiresAt > Date.now()) return { products: cached.products, skipped: 0 };
+  if (cached && cached.expiresAt > Date.now()) return cached.result;
+  if (cached) cache.delete(key);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 6500);
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ query, filters: { price: { max_price: budgetCents / 100 }, availability: ['InStock', 'LimitedAvailability'] }, limit: 20 }),
+      body: JSON.stringify({ query, filters: { price: { max_price: budgetCents / 100 }, availability: ['InStock'] }, limit: 20 }),
       signal: controller.signal
     });
     if (response.status === 401 || response.status === 403) throw new Channel3Error('Channel3 authentication failed. Check CHANNEL3_API_KEY.', 502);
@@ -107,7 +123,8 @@ export async function searchChannel3(apiKey: string | undefined, query: string, 
     let payload: unknown;
     try { payload = await response.json(); } catch { throw new Channel3Error('Channel3 returned malformed JSON.', 502); }
     const result = normalizeChannel3Response(payload);
-    cache.set(key, { expiresAt: Date.now() + cacheTtlMs, products: result.products });
+    if (cache.size >= maxCacheEntries) cache.delete(cache.keys().next().value as string);
+    cache.set(key, { expiresAt: Date.now() + cacheTtlMs, result });
     return result;
   } catch (error) {
     if (error instanceof Channel3Error) throw error;
