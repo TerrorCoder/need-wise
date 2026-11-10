@@ -16,7 +16,7 @@ Returns the labelled demonstration catalogue and a non-live-data notice. This is
 { "budgetCents": 7500, "requirements": "study essentials", "priorities": ["affordability"], "mode": "live" }
 ```
 
-The budget must be an integer from 100 to 1,000,000 cents; requirements must contain 3–500 characters. `mode` is `live` or `demo` (default `demo`). Live mode uses Workers AI to turn the request into a search query, then Channel3 `/v1/search`; deterministic code filters and selects within budget. The response contains selected items, totals, source labels, retailer links, remaining budget, explanation source, and disclosure.
+The budget must be an integer from 100 to 1,000,000 cents; requirements must contain 3–500 characters. `mode` is `live` or `demo` (default `demo`). Live mode uses one Workers AI intent call to create at most three focused searches, then Channel3 `/v1/search`; deterministic code rejects unsupported/excluded candidates, favors useful category diversity, and selects within budget. The response contains selected items, grounded explanations, `intent`, and `alternatives` keyed by selected product ID. Alternatives are real candidates from the same search pool and never fabricated.
 
 ## `POST /api/checkout/orders`
 

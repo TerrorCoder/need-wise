@@ -13,6 +13,8 @@ Most shopping experiences optimise for conversion and basket growth. NeedWise st
 ## Features
 
 - Natural-language needs and affordability, durability, or portability priorities
+- Intent-aware recommendations that identify product types, exclusions, and focused searches before ranking
+- Evidence-based relevance scoring, category diversity, and real replacement candidates
 - Deterministic basket selection that cannot exceed the stated maximum
 - Optional Cloudflare Workers AI explanations with a rules-based fallback
 - Channel3 live product discovery across retailer catalogues, with source, price, image, availability, and retailer links
@@ -81,7 +83,7 @@ npm run deploy       # deploy to the configured Worker (changes remote state)
 
 ## Channel3 live discovery
 
-NeedWise sends natural-language searches server-side to Channel3's documented `POST https://api.trychannel3.com/v1/search` endpoint using the `x-api-key` header. The Worker normalizes Channel3 products and their USD offers, removes entries without usable prices or links, applies the maximum budget in cents, and exposes the retailer URL. Results are labelled **Live catalogue results**. Shipping, tax, availability, and price changes remain the retailer's responsibility.
+NeedWise sends a structured intent to at most three focused Channel3 searches server-side using the documented `POST https://api.trychannel3.com/v1/search` endpoint and `x-api-key` header. The Worker normalizes Channel3 products and their USD offers, removes entries without usable prices or links, rejects excluded or weakly evidenced candidates, prefers useful category diversity, and applies the maximum budget in cents. Results are labelled **Live catalogue results** and include grounded replacement candidates. Shipping, tax, availability, and price changes remain the retailer's responsibility.
 
 Configure locally with `.dev.vars` or deploy with `npx wrangler secret put CHANNEL3_API_KEY`. Search the default study request in **Discover real products** mode to reproduce a live search. Without the key, the app still supports the demo mode but live mode reports a configuration error.
 

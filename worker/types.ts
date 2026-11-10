@@ -23,6 +23,17 @@ export interface RecommendationRequest {
 
 export interface RecommendationItem extends Product { reason: string }
 
+export interface ShoppingIntent {
+  objective: string;
+  categories: string[];
+  essentialTypes: string[];
+  optionalTypes: string[];
+  exclusions: string[];
+  priorities: Priority[];
+  budgetCents: number;
+  queries: string[];
+}
+
 export interface RecommendationResult {
   items: RecommendationItem[];
   totalCents: number;
@@ -31,6 +42,8 @@ export interface RecommendationResult {
   source: 'workers-ai' | 'deterministic-fallback';
   notice: string;
   mode: 'demo' | 'live';
+  intent?: ShoppingIntent;
+  alternatives?: Record<string, RecommendationItem[]>;
 }
 
 export interface CheckoutRequest { productIds: string[] }

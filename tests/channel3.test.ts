@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { normalizeChannel3Response, searchChannel3 } from '../worker/services/channel3';
+import { normalizeChannel3Response, searchChannel3, searchChannel3Queries } from '../worker/services/channel3';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -46,5 +46,11 @@ describe('Channel3 integration', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('not json', { status: 200 }));
     await expect(searchChannel3('key', 'new lamp', 5000)).rejects.toThrow('malformed JSON');
     await expect(searchChannel3(undefined, 'lamp', 5000)).rejects.toThrow('not configured');
+  });
+  it('limits focused retrieval to three unique queries and de-duplicates products', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({ products: [product()] }), { status: 200 }));
+    const result = await searchChannel3Queries('key', ['notebooks', 'pens', 'study accessories', 'extra', 'notebooks'], 5000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(result.products).toHaveLength(1);
   });
 });

@@ -20,4 +20,10 @@ describe('recommendations', () => {
     const result = await recommend({ AI: AI as never }, demoCatalogue, request);
     expect(result.items.some((item) => item.id === 'invented')).toBe(false);
   });
+  it('returns grounded replacement candidates without exceeding the budget', async () => {
+    const result = await recommend({}, demoCatalogue.slice(0, 4), { budgetCents: 6000, requirements: 'portable study kit', priorities: ['portability'] });
+    expect(result.alternatives).toBeDefined();
+    expect(Object.values(result.alternatives ?? {}).every((items) => items.every((item) => !result.items.some((selected) => selected.id === item.id)))).toBe(true);
+    expect(result.totalCents).toBeLessThanOrEqual(6000);
+  });
 });

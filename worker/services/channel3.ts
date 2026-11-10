@@ -134,3 +134,16 @@ export async function searchChannel3(apiKey: string | undefined, query: string, 
     clearTimeout(timeout);
   }
 }
+
+export async function searchChannel3Queries(apiKey: string | undefined, queries: string[], budgetCents: number): Promise<NormalizedChannel3Result> {
+    const uniqueQueries = [...new Set(queries.map((query) => query.trim()).filter((query) => query.length >= 3))].slice(0, 3);
+    if (!uniqueQueries.length) return { products: [], skipped: 0 };
+    const results = await Promise.all(uniqueQueries.map((query) => searchChannel3(apiKey, query, budgetCents)));
+    const seen = new Set<string>();
+    const products = results.flatMap((result) => result.products.filter((product) => {
+      if (seen.has(product.id)) return false;
+      seen.add(product.id);
+      return true;
+    }));
+    return { products, skipped: results.reduce((sum, result) => sum + result.skipped, 0) };
+}
