@@ -40,12 +40,18 @@ export function selectWithinBudget(products: Product[], budgetCents: number, req
   const selectedIds = new Set<string>();
   const categories = new Set<string>();
   let total = 0;
-  for (const candidate of [...scored].sort((a, b) => Number(categories.has(a.category)) - Number(categories.has(b.category)) || b.score - a.score)) {
-    if (selected.length >= 4 || selectedIds.has(candidate.product.id) || total + candidate.product.priceCents > budgetCents) continue;
+  const remaining = [...scored];
+  while (selected.length < 4) {
+    const affordable = remaining
+      .filter((candidate) => !selectedIds.has(candidate.product.id) && total + candidate.product.priceCents <= budgetCents)
+      .sort((a, b) => Number(categories.has(a.category)) - Number(categories.has(b.category)) || b.score - a.score || a.product.priceCents - b.product.priceCents);
+    const candidate = affordable[0];
+    if (!candidate) break;
     selected.push(candidate.product);
     selectedIds.add(candidate.product.id);
     categories.add(candidate.category);
     total += candidate.product.priceCents;
+    remaining.splice(remaining.indexOf(candidate), 1);
   }
   return selected;
 }

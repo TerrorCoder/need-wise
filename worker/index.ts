@@ -1,5 +1,6 @@
 import { demoCatalogue, findProducts } from './data/catalog';
 import { createPayPalOrder, capturePayPalOrder, ProviderError } from './services/paypal';
+import { Channel3Error } from './services/channel3';
 import { recommend } from './services/recommendations';
 import type { CheckoutRequest, Env, Priority, RecommendationRequest } from './types';
 
@@ -55,9 +56,10 @@ export default {
       return secured;
     } catch (error) {
       if (error instanceof Response) return error;
-      const status = error instanceof ProviderError ? error.status : 500;
+      const providerError = error instanceof ProviderError || error instanceof Channel3Error;
+      const status = providerError ? error.status : 500;
       console.error(JSON.stringify({ event: 'request_error', path: url.pathname, message: error instanceof Error ? error.message : 'Unknown error' }));
-      return reply({ error: error instanceof ProviderError ? error.message : 'Unexpected server error.' }, status);
+      return reply({ error: providerError ? error.message : 'Unexpected server error.' }, status);
     }
   }
 } satisfies ExportedHandler<Env>;

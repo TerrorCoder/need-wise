@@ -39,4 +39,17 @@ describe('budget enforcement', () => {
     expect(selected.map((item) => item.id)).toEqual(expect.arrayContaining(['notebook', 'pen']));
     expect(sumProducts(selected)).toBeLessThanOrEqual(7500);
   });
+  it('re-evaluates diversity after each selection', () => {
+    const intent: ShoppingIntent = {
+      objective: 'home office setup', categories: ['office'], essentialTypes: [], optionalTypes: [],
+      exclusions: [], priorities: ['affordability'], budgetCents: 5000, queries: ['office accessories']
+    };
+    const products: Product[] = [
+      { id: 'pen-1', name: 'Office pen one', description: 'Office writing pen', priceCents: 500, category: 'stationery', merchant: 'retailer', source: 'channel3', attributes: { durability: 5, portability: 5, value: 20 } },
+      { id: 'pen-2', name: 'Office pen two', description: 'Office writing pen', priceCents: 600, category: 'stationery', merchant: 'retailer', source: 'channel3', attributes: { durability: 5, portability: 5, value: 19 } },
+      { id: 'lamp', name: 'Office desk lamp', description: 'Office lighting for a desk', priceCents: 1200, category: 'lighting', merchant: 'retailer', source: 'channel3', attributes: { durability: 3, portability: 2, value: 3 } }
+    ];
+    const selected = selectWithinBudget(products, 5000, 'home office setup', ['affordability'], intent);
+    expect(selected.slice(0, 2).map((product) => product.id)).toEqual(['pen-1', 'lamp']);
+  });
 });
