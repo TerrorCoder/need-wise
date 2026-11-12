@@ -1,6 +1,7 @@
 import { demoCatalogue, findProducts } from './data/catalog';
 import { createPayPalOrder, capturePayPalOrder, ProviderError } from './services/paypal';
 import { Channel3Error } from './services/channel3';
+import { BasketError, groupRetailerAllocation, verifyBasketSnapshot } from './services/basket';
 import { recommend } from './services/recommendations';
 import type { CheckoutRequest, Env, Priority, RecommendationRequest } from './types';
 
@@ -11,9 +12,9 @@ const reply = (data: unknown, status = 200) => new Response(JSON.stringify(data)
 
 async function body<T>(request: Request): Promise<T> {
   const length = Number(request.headers.get('content-length') ?? 0);
-  if (length > 16_384) throw new Response('Request too large', { status: 413 });
+  if (length > 32_768) throw new Response('Request too large', { status: 413 });
   const text = await request.text();
-  if (text.length > 16_384) throw new Response('Request too large', { status: 413 });
+  if (text.length > 32_768) throw new Response('Request too large', { status: 413 });
   try { return JSON.parse(text) as T; } catch { throw new Response('Invalid JSON', { status: 400 }); }
 }
 
@@ -37,9 +38,15 @@ async function api(request: Request, env: Env, url: URL) {
   if (request.method === 'POST' && url.pathname === '/api/checkout/orders') {
     const input = await body<CheckoutRequest>(request);
     if (!Array.isArray(input.productIds) || input.productIds.length < 1 || input.productIds.length > 20 || input.productIds.some((id) => typeof id !== 'string')) return reply({ error: 'Choose between 1 and 20 products.' }, 400);
-    const products = findProducts(input.productIds);
-    if (products.length !== new Set(input.productIds).size) return reply({ error: 'One or more products are invalid.' }, 400);
-    return reply(await createPayPalOrder(env, products), 201);
+    let products;
+    if (input.checkoutToken !== undefined) {
+      products = await verifyBasketSnapshot(env.BASKET_SIGNING_SECRET, input.checkoutToken, input.productIds);
+    } else {
+      products = findProducts(input.productIds);
+      if (products.length !== new Set(input.productIds).size) return reply({ error: 'One or more products are invalid.' }, 400);
+    }
+    const order = await createPayPalOrder(env, products);
+    return reply({ ...order, allocation: groupRetailerAllocation(products) }, 201);
   }
   const captureMatch = url.pathname.match(/^\/api\/checkout\/orders\/([A-Z0-9-]{8,64})\/capture$/i);
   if (request.method === 'POST' && captureMatch) return reply(await capturePayPalOrder(env, captureMatch[1]));
@@ -56,7 +63,7 @@ export default {
       return secured;
     } catch (error) {
       if (error instanceof Response) return error;
-      const providerError = error instanceof ProviderError || error instanceof Channel3Error;
+      const providerError = error instanceof ProviderError || error instanceof Channel3Error || error instanceof BasketError;
       const status = providerError ? error.status : 500;
       console.error(JSON.stringify({ event: 'request_error', path: url.pathname, message: error instanceof Error ? error.message : 'Unknown error' }));
       return reply({ error: providerError ? error.message : 'Unexpected server error.' }, status);

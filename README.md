@@ -18,6 +18,7 @@ Most shopping experiences optimise for conversion and basket growth. NeedWise st
 - Deterministic basket selection that cannot exceed the stated maximum
 - Optional Cloudflare Workers AI explanations with a rules-based fallback
 - Channel3 live product discovery across retailer catalogues, with source, price, image, availability, and retailer links
+- HMAC-authenticated live-basket checkout with a proposed retailer allocation review
 - A separately labelled demonstration catalogue for PayPal Sandbox
 - Editable basket and live remaining-budget indicator
 - Real PayPal Orders v2 Sandbox create, redirect, and capture workflow
@@ -67,6 +68,7 @@ Secrets belong in `.dev.vars` locally and in Cloudflare Worker secrets when depl
 | `PAYPAL_CLIENT_ID` | For checkout | Sandbox REST app client ID |
 | `PAYPAL_CLIENT_SECRET` | For checkout | Sandbox REST app secret |
 | `CHANNEL3_API_KEY` | For live discovery | Channel3 developer API key, stored only as a Worker secret |
+| `BASKET_SIGNING_SECRET` | For live checkout | At least 32 random characters used to sign 15-minute basket snapshots |
 
 Non-secret configuration is in `wrangler.jsonc`: `PAYPAL_ENVIRONMENT` is fixed to `sandbox`, `APP_URL` controls PayPal return/cancel URLs, and the `AI` and `ASSETS` bindings connect Cloudflare services.
 
@@ -92,7 +94,7 @@ Configure locally with `.dev.vars` or deploy with `npx wrangler secret put CHANN
 1. Sign in at [PayPal Developer](https://developer.paypal.com/) and create a **Sandbox REST app**.
 2. Copy its client ID and secret to `.dev.vars` for local testing.
 3. Use the PayPal Developer dashboard's sandbox personal account to approve checkout.
-4. For Cloudflare, run `npx wrangler secret put PAYPAL_CLIENT_ID` and `npx wrangler secret put PAYPAL_CLIENT_SECRET`; paste each value only into Wrangler's hidden prompt.
+4. For Cloudflare, run `npx wrangler secret put PAYPAL_CLIENT_ID`, `npx wrangler secret put PAYPAL_CLIENT_SECRET`, and `npx wrangler secret put BASKET_SIGNING_SECRET`; paste each value only into Wrangler's hidden prompt.
 5. Run one full create → approve → return → capture flow and confirm `COMPLETED` in the PayPal Sandbox dashboard before describing the integration as verified.
 
 Never put the secret in source, `wrangler.jsonc`, a `VITE_` variable, GitHub Actions, screenshots, or chat.

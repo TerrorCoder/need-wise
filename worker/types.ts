@@ -44,9 +44,11 @@ export interface RecommendationResult {
   mode: 'demo' | 'live';
   intent?: ShoppingIntent;
   alternatives?: Record<string, RecommendationItem[]>;
+  checkoutToken?: string;
+  checkoutExpiresAt?: number;
 }
 
-export interface CheckoutRequest { productIds: string[] }
+export interface CheckoutRequest { productIds: string[]; checkoutToken?: string }
 
 export interface Env {
   ASSETS: Fetcher;
@@ -56,4 +58,5 @@ export interface Env {
   PAYPAL_ENVIRONMENT: 'sandbox';
   APP_URL: string;
   CHANNEL3_API_KEY?: string;
+  BASKET_SIGNING_SECRET?: string;
 }

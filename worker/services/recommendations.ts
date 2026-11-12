@@ -1,6 +1,7 @@
 import type { Env, Product, RecommendationItem, RecommendationRequest, RecommendationResult, ShoppingIntent } from '../types';
 import { sumProducts, selectWithinBudget, rankAlternatives } from './budget';
 import { searchChannel3Queries } from './channel3';
+import { issueBasketSnapshot } from './basket';
 
 type AiOutput = { summary?: unknown; reasons?: unknown };
 type IntentOutput = Partial<Omit<ShoppingIntent, 'budgetCents' | 'priorities'>> & { query?: unknown; queries?: unknown };
@@ -69,7 +70,7 @@ function buildAlternatives(products: Product[], selected: Product[], request: Re
   return alternatives;
 }
 
-export async function recommend(env: Pick<Env, 'AI' | 'CHANNEL3_API_KEY'>, catalogue: Product[], request: RecommendationRequest): Promise<RecommendationResult> {
+export async function recommend(env: Pick<Env, 'AI' | 'CHANNEL3_API_KEY' | 'BASKET_SIGNING_SECRET'>, catalogue: Product[], request: RecommendationRequest): Promise<RecommendationResult> {
   const mode = request.mode ?? 'demo';
   const intent = await interpretRequest(env, request);
   let sourceProducts = catalogue;
@@ -110,8 +111,14 @@ export async function recommend(env: Pick<Env, 'AI' | 'CHANNEL3_API_KEY'>, catal
       console.warn(JSON.stringify({ event: 'ai_fallback', message: error instanceof Error ? error.message : 'Unknown AI error' }));
     }
   }
+  const items = selected.map((product) => ({ ...product, reason: reasons[product.id] }));
+  const alternatives = buildAlternatives(sourceProducts, selected, request, intent);
+  let checkout: { token: string; expiresAt: number } | undefined;
+  if (mode === 'live' && items.length) {
+    checkout = await issueBasketSnapshot(env.BASKET_SIGNING_SECRET, [...items, ...Object.values(alternatives).flat()], request.budgetCents);
+  }
   return {
-    items: selected.map((product) => ({ ...product, reason: reasons[product.id] })),
+    items,
     totalCents,
     remainingCents: request.budgetCents - totalCents,
     summary,
@@ -119,6 +126,8 @@ export async function recommend(env: Pick<Env, 'AI' | 'CHANNEL3_API_KEY'>, catal
     notice: `${providerNotice} AI text is explanatory; product IDs and budget totals are validated in code.`,
     mode,
     intent,
-    alternatives: buildAlternatives(sourceProducts, selected, request, intent)
+    alternatives,
+    checkoutToken: checkout?.token,
+    checkoutExpiresAt: checkout?.expiresAt
   };
 }
