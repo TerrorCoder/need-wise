@@ -10,6 +10,7 @@ const priorities: Array<{ value: Priority; label: string; hint: string }> = [
   { value: 'portability', label: 'Portability', hint: 'Easy to carry' }
 ];
 const checkoutStorageKey = 'needwise-checkout-summary';
+const productsPerPage = 1;
 type CheckoutSummary = { orderId: string; totalCents: number; allocation: RetailerAllocation[] };
 
 function allocationFor(items: RecommendationItem[]) {
@@ -57,13 +58,19 @@ export default function App() {
   const [alternatives, setAlternatives] = useState<Record<string, RecommendationItem[]>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [paymentSummary, setPaymentSummary] = useState<CheckoutSummary | null>(null);
-  const [busy, setBusy] = useState(isReturning);
+  const [searching, setSearching] = useState(false);
+  const [checkingOut, setCheckingOut] = useState(false);
+  const [capturing, setCapturing] = useState(isReturning);
+  const [productPage, setProductPage] = useState(0);
+  const [shoppingView, setShoppingView] = useState<'products' | 'checkout'>('products');
   const [message, setMessage] = useState<{ kind: 'error' | 'success' | 'info'; text: string } | null>(() => initialParams.get('payment') === 'cancelled' ? { kind: 'info', text: 'Payment was cancelled. Your basket has not been charged.' } : null);
   const budgetCents = Math.round(Number(budget) * 100);
   const total = useMemo(() => basket.reduce((sum, item) => sum + item.priceCents, 0), [basket]);
   const remaining = Math.max(0, budgetCents - total);
   const percent = budgetCents > 0 ? Math.min(100, (total / budgetCents) * 100) : 0;
   const retailerAllocation = useMemo(() => allocationFor(basket), [basket]);
+  const pageCount = Math.max(1, Math.ceil(basket.length / productsPerPage));
+  const visibleProducts = basket.slice(productPage * productsPerPage, (productPage + 1) * productsPerPage);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -81,7 +88,7 @@ export default function App() {
         } else {
           setMessage({ kind: 'error', text: capture.captured ? 'PayPal captured the order, but its verified amount did not match this browser checkout summary.' : `Payment status: ${capture.status}.` });
         }
-      }).catch((error: Error) => setMessage({ kind: 'error', text: error.message })).finally(() => { setBusy(false); history.replaceState({}, '', location.pathname); });
+      }).catch((error: Error) => setMessage({ kind: 'error', text: error.message })).finally(() => { setCapturing(false); history.replaceState({}, '', location.pathname); });
     } else if (payment === 'cancelled') history.replaceState({}, '', location.pathname);
   }, []);
 
@@ -90,16 +97,17 @@ export default function App() {
     event.preventDefault();
     setMessage(null);
     if (!Number.isFinite(budgetCents) || budgetCents < 100) { setMessage({ kind: 'error', text: 'Enter a budget of at least $1.' }); return; }
-    setBusy(true);
+    setSearching(true);
     try {
       const data = await getRecommendations(budgetCents, requirements, selectedPriorities, mode);
-      setResult(data); setBasket(data.items); setAlternatives(data.alternatives ?? {}); setExpanded(new Set());
+      setResult(data); setBasket(data.items); setAlternatives(data.alternatives ?? {}); setExpanded(new Set()); setProductPage(0); setShoppingView('products');
       if (!data.items.length) setMessage({ kind: 'info', text: data.notice.includes('fits') ? 'No relevant products fit this budget. Try increasing it or broadening your need.' : 'No relevant products were found for this need.' });
     } catch (error) { setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Recommendation failed.' }); }
-    finally { setBusy(false); }
+    finally { setSearching(false); }
   }
   function removeItem(id: string) {
     setBasket((current) => current.filter((item) => item.id !== id));
+    setProductPage((current) => Math.max(0, Math.min(current, Math.ceil((basket.length - 1) / productsPerPage) - 1)));
     setMessage({ kind: 'info', text: 'Item removed. Your remaining budget has been updated.' });
   }
   function replaceItem(item: RecommendationItem) {
@@ -111,13 +119,13 @@ export default function App() {
   }
   async function checkout() {
     if (!result || !basket.length || total > budgetCents || (result.mode === 'live' && !result.checkoutToken)) return;
-    setBusy(true); setMessage(null);
+    setCheckingOut(true); setMessage(null);
     try {
       const order = await createOrder(basket.map((item) => item.id), result.mode === 'live' ? result.checkoutToken : undefined);
       sessionStorage.setItem(checkoutStorageKey, JSON.stringify({ orderId: order.orderId, totalCents: order.totalCents, allocation: order.allocation } satisfies CheckoutSummary));
       location.assign(order.approveUrl);
     }
-    catch (error) { setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Checkout failed.' }); setBusy(false); }
+    catch (error) { setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Checkout failed.' }); setCheckingOut(false); }
   }
 
   return <>
@@ -128,19 +136,21 @@ export default function App() {
       <section className="planner" id="planner">
         <div className="section-heading"><div><p className="eyebrow">Plan your basket</p><h2>What are you shopping for?</h2></div></div>
         <div className="planner-grid">
-          <form className="request-card" onSubmit={submit}><fieldset className="mode-switch"><legend>Choose where to shop</legend><label className={mode === 'live' ? 'mode active' : 'mode'}><input type="radio" name="mode" checked={mode === 'live'} onChange={() => setMode('live')}/><b>Shop retailer products</b><small>Current listings and prices</small></label><label className={mode === 'demo' ? 'mode active' : 'mode'}><input type="radio" name="mode" checked={mode === 'demo'} onChange={() => setMode('demo')}/><b>Browse sample products</b><small>Practice with a sample basket</small></label></fieldset><label htmlFor="budget">Maximum budget <span>USD</span></label><div className="money-input"><span>$</span><input id="budget" inputMode="decimal" type="number" min="1" max="10000" step="0.01" value={budget} onChange={(event) => setBudget(event.target.value)} required/></div><label htmlFor="requirements">What do you need?</label><textarea id="requirements" maxLength={500} value={requirements} onChange={(event) => setRequirements(event.target.value)} required/><fieldset><legend>What matters most?</legend><div className="priority-grid">{priorities.map((priority) => <label className={selectedPriorities.includes(priority.value) ? 'priority active' : 'priority'} key={priority.value}><input type="checkbox" checked={selectedPriorities.includes(priority.value)} onChange={() => togglePriority(priority.value)}/><b>{priority.label}</b><small>{priority.hint}</small></label>)}</div></fieldset><button className="primary-button" disabled={busy}>{busy ? 'Finding suitable products…' : mode === 'live' ? 'Find products' : 'Build a sample basket'} <span aria-hidden="true">→</span></button><p className="fine-print">{mode === 'live' ? 'Prices and availability may change at the retailer.' : 'Sample products let you try the basket and test checkout without buying retailer items.'}</p></form>
-          <div className="results" aria-live="polite" aria-busy={busy}>
+          <form className="request-card" onSubmit={submit}><fieldset className="mode-switch"><legend>Choose where to shop</legend><label className={mode === 'live' ? 'mode active' : 'mode'}><input type="radio" name="mode" checked={mode === 'live'} onChange={() => setMode('live')}/><b>Shop retailer products</b><small>Current listings and prices</small></label><label className={mode === 'demo' ? 'mode active' : 'mode'}><input type="radio" name="mode" checked={mode === 'demo'} onChange={() => setMode('demo')}/><b>Browse sample products</b><small>Practice with a sample basket</small></label></fieldset><label htmlFor="budget">Maximum budget <span>USD</span></label><div className="money-input"><span>$</span><input id="budget" inputMode="decimal" type="number" min="1" max="10000" step="0.01" value={budget} onChange={(event) => setBudget(event.target.value)} required/></div><label htmlFor="requirements">What do you need?</label><textarea id="requirements" maxLength={500} value={requirements} onChange={(event) => setRequirements(event.target.value)} required/><fieldset><legend>What matters most?</legend><div className="priority-grid">{priorities.map((priority) => <label className={selectedPriorities.includes(priority.value) ? 'priority active' : 'priority'} key={priority.value}><input type="checkbox" checked={selectedPriorities.includes(priority.value)} onChange={() => togglePriority(priority.value)}/><b>{priority.label}</b><small>{priority.hint}</small></label>)}</div></fieldset><button className="primary-button" disabled={searching}>{searching ? 'Finding suitable products…' : mode === 'live' ? 'Find products' : 'Build a sample basket'} <span aria-hidden="true">→</span></button><p className="fine-print">{mode === 'live' ? 'Prices and availability may change at the retailer.' : 'Sample products let you try the basket and test checkout without buying retailer items.'}</p></form>
+          <div className="results" aria-live="polite" aria-busy={searching || capturing}>
             {message && <div className={`notice ${message.kind}`} role={message.kind === 'error' ? 'alert' : 'status'}>{message.text}</div>}
             {paymentSummary && <section className="checkout-review confirmation"><h3>Test payment confirmed</h3><p>PayPal order <b>{paymentSummary.orderId}</b> was confirmed for <b>{formatMoney(paymentSummary.totalCents)}</b>.</p>{paymentSummary.allocation.map((entry) => <div className="allocation-row" key={entry.merchant}><span>{entry.merchant}</span><strong>{formatMoney(entry.amountCents)}</strong></div>)}<p>This was a test payment. No money was sent to the listed retailers.</p></section>}
-            {busy && <div className="loading-state" role="status">Finding suitable products and checking your budget…</div>}
-            {!busy && !result && !message && <div className="empty-state"><span aria-hidden="true">⌁</span><h3>Your suggestions will appear here</h3><p>Enter your budget and describe what you need to start building your basket.</p></div>}
-            {!busy && result && <>
-              <div className="result-heading"><div><p className="eyebrow">{result.mode === 'live' ? 'Retailer products' : 'Sample basket'}</p><h3>{result.summary}</h3></div>{basket.length > 0 && <a className="checkout-jump" href="#checkout-review">Review basket &amp; checkout</a>}</div>
+            {searching && <div className="loading-state" role="status">Finding suitable products and checking your budget…</div>}
+            {capturing && <div className="loading-state" role="status">Confirming your PayPal payment…</div>}
+            {!searching && !capturing && !result && !message && <div className="empty-state"><span aria-hidden="true">⌁</span><h3>Your suggestions will appear here</h3><p>Enter your budget and describe what you need to start building your basket.</p></div>}
+            {!searching && !capturing && result && shoppingView === 'products' && <>
+              <div className="result-heading"><div><p className="eyebrow">{result.mode === 'live' ? 'Retailer products' : 'Sample basket'}</p><h3>{result.summary}</h3></div>{basket.length > 0 && <button className="checkout-jump" type="button" onClick={() => setShoppingView('checkout')}>Review basket &amp; checkout</button>}</div>
               <p className="result-notice">{result.mode === 'live' ? 'Check the retailer page before buying; prices, taxes, delivery costs, and availability can change.' : 'These are sample products for trying NeedWise and its test checkout.'}</p>
-              {basket.length ? basket.map((item) => <ProductCard key={item.id} item={item} alternatives={alternatives[item.id] ?? []} live={result.mode === 'live'} expanded={expanded.has(item.id)} onExpand={() => setExpanded((current) => { const next = new Set(current); if (next.has(item.id)) next.delete(item.id); else next.add(item.id); return next; })} onRemove={() => removeItem(item.id)} onReplace={() => replaceItem(item)} />) : <div className="empty-state compact"><h3>Your basket is empty</h3><p>Run the search again to build a new focused basket.</p></div>}
+              {basket.length ? visibleProducts.map((item) => <ProductCard key={item.id} item={item} alternatives={alternatives[item.id] ?? []} live={result.mode === 'live'} expanded={expanded.has(item.id)} onExpand={() => setExpanded((current) => { const next = new Set(current); if (next.has(item.id)) next.delete(item.id); else next.add(item.id); return next; })} onRemove={() => removeItem(item.id)} onReplace={() => replaceItem(item)} />) : <div className="empty-state compact"><h3>Your basket is empty</h3><p>Run the search again to build a new focused basket.</p></div>}
+              {basket.length > productsPerPage && <nav className="pagination" aria-label="Product pages"><button type="button" onClick={() => setProductPage((page) => Math.max(0, page - 1))} disabled={productPage === 0}>Previous</button><span>{productPage + 1} of {pageCount}</span><button type="button" onClick={() => setProductPage((page) => Math.min(pageCount - 1, page + 1))} disabled={productPage >= pageCount - 1}>Next</button></nav>}
               <div className="budget-summary"><div className="budget-summary-heading"><span>Budget summary</span><b>{basket.length} selected</b></div><div className="budget-row"><span>Maximum budget</span><strong>{formatMoney(budgetCents)}</strong></div><div className="budget-row"><span>Selected total</span><strong>{formatMoney(total)}</strong></div><div className="progress" role="progressbar" aria-label="Budget used" aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${percent}%` }}/></div><div className="budget-row remaining"><span>Remaining</span><strong>{formatMoney(remaining)}</strong></div><p>Catalogue prices are not final retailer charges; taxes and shipping may apply.</p></div>
-              {basket.length > 0 && <section className="checkout-review" id="checkout-review"><h3>Review your checkout</h3>{retailerAllocation.map((entry) => <div className="allocation-row" key={entry.merchant}><span>{entry.merchant}</span><strong>{formatMoney(entry.amountCents)}</strong></div>)}<div className="allocation-row allocation-total"><span>Basket total</span><strong>{formatMoney(total)}</strong></div><p>Amounts are grouped by retailer so you can see where each part of your basket belongs.</p><button className="paypal-button" type="button" onClick={checkout} disabled={busy || total > budgetCents || (result.mode === 'live' && !result.checkoutToken)}>Continue with PayPal</button><p>This is a test checkout. No real money will be charged or sent to retailers.</p></section>}
             </>}
+            {!searching && !capturing && result && shoppingView === 'checkout' && <section className="checkout-view" id="checkout-review"><button className="back-button" type="button" onClick={() => setShoppingView('products')}>← Back to products</button><p className="eyebrow">Your basket</p><h3>Review your checkout</h3>{retailerAllocation.map((entry) => <div className="allocation-row" key={entry.merchant}><span>{entry.merchant}</span><strong>{formatMoney(entry.amountCents)}</strong></div>)}<div className="allocation-row allocation-total"><span>Basket total</span><strong>{formatMoney(total)}</strong></div><p>Amounts are grouped by retailer so you can see where each part of your basket belongs.</p><button className="paypal-button" type="button" onClick={checkout} disabled={checkingOut || total > budgetCents || (result.mode === 'live' && !result.checkoutToken)}>{checkingOut ? 'Opening PayPal…' : 'Continue with PayPal'}</button><p>This is a test checkout. No real money will be charged or sent to retailers.</p></section>}
           </div>
         </div>
       </section>
