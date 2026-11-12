@@ -9,3 +9,5 @@
 @media(max-width:850px){.hero,.steps,.planner{min-height:calc(100svh - 76px)}.planner-grid{height:auto}.request-card,.results{height:auto;overflow:visible}.results{min-height:calc(100svh - 110px)}.planner{padding-top:36px}.step-grid article{padding:1.5rem}.step-grid h3{margin:1rem 0 .5rem}}
 @media(min-width:851px){.site-header{flex:none}.hero,.steps,.planner{height:calc(100svh - 76px);min-height:0}.planner-grid{min-height:0}.request-card,.results{min-height:0;overflow:auto}.product-card{min-height:0}.checkout-view{height:100%;display:flex;flex-direction:column;justify-content:center}.checkout-view .paypal-button{margin-top:1rem}}
 @media(max-height:760px) and (min-width:851px){.hero,.steps,.planner{height:calc(100svh - 64px)}}
+@media(min-width:851px){.planner{height:auto;min-height:0;padding:100px max(6vw,24px)}.planner-grid{height:auto}.request-card,.results{height:auto;overflow:visible}}
+@media(max-width:850px){.planner{height:auto;min-height:0;padding-top:100px}.planner-grid{height:auto}.request-card,.results{height:auto;overflow:visible}}
