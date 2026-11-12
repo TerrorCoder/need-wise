@@ -56,7 +56,7 @@ function fallbackReason(product: Product, request: RecommendationRequest, intent
   const facts = product.description.trim() || 'The available catalogue information is limited.';
   const match = [...new Set([...intent.essentialTypes, ...intent.categories])].find((term) => `${product.name} ${product.category} ${product.description}`.toLowerCase().includes(term.toLowerCase()));
   const need = match ? `${match.toLowerCase()} need` : request.requirements.toLowerCase();
-  return `${product.name} addresses the ${need}. The listing says: ${facts.slice(0, 180)}${facts.length > 180 ? '…' : ''} It costs ${(product.priceCents / 100).toFixed(2)}, leaving ${(Math.max(0, request.budgetCents - product.priceCents) / 100).toFixed(2)} for other needs.`;
+  return `${product.name} addresses the ${need}. The listing says: ${facts.slice(0, 180)}${facts.length > 180 ? '…' : ''} It costs $${(product.priceCents / 100).toFixed(2)}, leaving $${(Math.max(0, request.budgetCents - product.priceCents) / 100).toFixed(2)} for other needs.`;
 }
 
 function buildAlternatives(products: Product[], selected: Product[], request: RecommendationRequest, intent: ShoppingIntent) {
