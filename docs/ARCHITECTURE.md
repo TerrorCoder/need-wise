@@ -1,15 +1,44 @@
 # Architecture
 
-NeedWise is a stateless Cloudflare application. Vite builds the React client into `dist`; the same Worker serves those assets and routes `/api/*` before static files.
+NeedWise is a stateless React application and Cloudflare Worker. Vite builds the frontend into `dist`; the Worker handles `/api/*` before serving static assets through `ASSETS`.
 
-## Trust boundaries
+## Recommendation pipeline
 
-The browser sends a budget, requirements, priorities, and later a list of product IDs. It never sends an authoritative price. Demo IDs are resolved against the static catalogue. Live recommendations include a 15-minute HMAC-authenticated snapshot containing the approved Channel3 candidate IDs, names, merchants, integer-cent prices, source, budget, and expiry. At checkout the Worker verifies the signature and expiry, resolves only selected IDs from that snapshot, rejects unknown or duplicate IDs, and recalculates the total and retailer allocation.
+1. `worker/index.ts` validates the budget, requirements, priorities, and mode.
+2. `recommendations.ts` asks Workers AI for structured intent. A deterministic intent is used if AI is absent or invalid.
+3. Live mode sends at most three unique queries to Channel3. Demo mode uses `worker/data/catalog.ts`.
+4. Channel3 normalization accepts the cheapest in-stock USD offer with an HTTPS retailer URL, adds an optional HTTPS image, removes malformed entries, and de-duplicates IDs.
+5. `budget.ts` scores request evidence and priorities, prefers category diversity, and selects at most four products without crossing the budget.
+6. Workers AI may explain only selected records. Unknown IDs and missing explanations are rejected or replaced with deterministic text.
+7. Alternatives come from the same retrieved pool.
 
-Live recommendations use Workers AI first to produce a structured intent: objective, product categories, essential and optional types, exclusions, and up to three focused product queries. Channel3 requests are bounded to those three queries, cached, de-duplicated, and normalized to USD offers with retailer URLs. Deterministic scoring then requires evidence in the product record, rejects excluded terms, favors category diversity, and selects at most four products without crossing the limit or trying to spend it all. The response includes grounded replacement candidates from the same retrieved pool. Workers AI explains only selected records and may not change IDs, prices, or totals; malformed or unavailable AI output falls back to deterministic explanations.
+## Checkout trust boundary
 
-PayPal credentials, `CHANNEL3_API_KEY`, and `BASKET_SIGNING_SECRET` exist only as Worker secrets. Both validated live snapshots and the static demo catalogue can create one PayPal Sandbox order with exact product-level line items. The allocation shown by retailer is a proposed future marketplace distribution; the current Sandbox order does not pay retailers. On return, the client asks the Worker to capture, compares PayPal's verified captured amount with the server-created checkout summary retained in browser session storage, and displays the allocation. A repeated capture checks the existing PayPal order and reports an already-completed order as success.
+The browser never supplies an authoritative price. Demo checkout resolves IDs against the static server catalogue. Live checkout uses a 15-minute HMAC-SHA-256 snapshot containing approved Channel3 IDs, names, merchants, prices, source, budget, and expiry.
 
-## Privacy and security
+At order creation, the Worker verifies the signature and expiry, rejects duplicate or unapproved IDs, reconstructs products from signed values, checks the signed budget, recalculates the total in cents, and sends one USD `CAPTURE` order with line items to PayPal Sandbox.
 
-NeedWise has no database, accounts, analytics, or order-history storage. It applies restrictive browser headers, limits JSON request bodies, logs structured operational errors without credentials, and uses Sandbox endpoints exclusively.
+The retailer allocation is a review grouping. PayPal receives one purchase unit for the configured Sandbox merchant. No retailer receives funds and no marketplace payout occurs.
+
+## Capture flow
+
+Before redirect, the browser stores the PayPal order ID, server total, and retailer grouping in `sessionStorage`. PayPal returns the browser with an order token. The Worker captures the order and parses completed USD captures. The client accepts the result when the order ID and captured amount match its saved summary.
+
+Capture uses a stable PayPal request ID. If PayPal reports an error after an earlier successful capture, the Worker retrieves the order and treats an already completed order as a duplicate success.
+
+## Bindings and configuration
+
+- `ASSETS`: Vite build
+- `AI`: Cloudflare Workers AI
+- `PAYPAL_ENVIRONMENT`: fixed to `sandbox`
+- `APP_URL`: PayPal return and cancellation origin
+- `CHANNEL3_API_KEY`: Worker secret
+- `PAYPAL_CLIENT_ID`: Worker secret
+- `PAYPAL_CLIENT_SECRET`: Worker secret
+- `BASKET_SIGNING_SECRET`: Worker secret of at least 32 characters
+
+## Privacy and operations
+
+NeedWise has no database, login system, analytics store, or server-side order history. The Worker applies a 32 KiB request limit, safe provider errors, structured operational logs, and restrictive browser headers. Channel3 results are cached for 60 seconds in a bounded, per-isolate memory cache.
+
+This is a Sandbox architecture. Live payments would require persistent records, webhook verification, refunds, compliance review, and a legitimate fulfillment or marketplace model.

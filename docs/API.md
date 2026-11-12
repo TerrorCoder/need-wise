@@ -1,31 +1,56 @@
-# API
+# API reference
 
-All endpoints are same-origin and return JSON. Error responses use `{ "error": "safe message" }`.
+All endpoints are same-origin and return JSON. Errors use `{ "error": "safe message" }`.
 
 ## `GET /api/status`
 
-Reports whether Workers AI, Channel3, and PayPal Sandbox are configured. It never returns secret values.
+Reports whether Workers AI, Channel3, and PayPal are configured without returning secrets. `catalogue` is `channel3` when the key exists and `demo` otherwise. This is a configuration check, not a live provider health check.
 
 ## `GET /api/products`
 
-Returns the labelled demonstration catalogue and a non-live-data notice. This is the only catalogue accepted by checkout.
+Returns the static sample catalogue with `source: "demo"` and a notice that its prices and availability are not live.
 
 ## `POST /api/recommendations`
 
 ```json
-{ "budgetCents": 7500, "requirements": "study essentials", "priorities": ["affordability"], "mode": "live" }
+{
+  "budgetCents": 7500,
+  "requirements": "study essentials for a university student",
+  "priorities": ["affordability", "portability"],
+  "mode": "live"
+}
 ```
 
-The budget must be an integer from 100 to 1,000,000 cents; requirements must contain 3–500 characters. `mode` is `live` or `demo` (default `demo`). Live mode uses one Workers AI intent call to create at most three focused searches, then Channel3 `/v1/search`; deterministic code rejects unsupported/excluded candidates, favors useful category diversity, and selects within budget. The response contains selected items, grounded explanations, `intent`, and `alternatives` keyed by selected product ID. Alternatives are real candidates from the same search pool and never fabricated. A non-empty live result also includes `checkoutToken` and `checkoutExpiresAt`; the token authenticates the approved live candidate set and budget for 15 minutes.
+- `budgetCents`: safe integer from 100 to 1,000,000
+- `requirements`: trimmed string from 3 to 500 characters
+- `priorities`: `affordability`, `durability`, or `portability`
+- `mode`: `live` or `demo`; defaults to `demo`
+
+The response contains selected items, totals, explanation source, notice, intent, alternatives, and mode. A non-empty live result also contains a signed `checkoutToken` and millisecond `checkoutExpiresAt`, valid for 15 minutes.
+
+The top-level `source` is the explanation path (`workers-ai` or `deterministic-fallback`). Each product's `source` is `channel3` or `demo`.
 
 ## `POST /api/checkout/orders`
 
+Demo request:
+
 ```json
-{ "productIds": ["channel3-product-1"], "checkoutToken": "signed-live-snapshot" }
+{ "productIds": ["demo-product-id"] }
 ```
 
-Accepts 1–20 unique IDs. Demo checkout omits `checkoutToken` and resolves IDs against the static catalogue. Live checkout requires the signed recommendation snapshot; the Worker verifies authenticity, expiry, approved IDs, prices, source, and confirmed budget before recalculating the USD total and retailer allocation. The response includes the PayPal approval URL, server total, and allocation.
+Live request:
+
+```json
+{
+  "productIds": ["channel3-product-id"],
+  "checkoutToken": "signed-live-snapshot"
+}
+```
+
+The endpoint accepts 1 to 20 unique IDs. Without a token, IDs must exist in the server demo catalogue. With a token, the Worker verifies the live snapshot, expiry, IDs, prices, and budget.
+
+A successful `201` response contains the PayPal order ID, Sandbox approval URL, server total, USD currency, and retailer allocation. The allocation is informational and does not describe disbursements or payouts.
 
 ## `POST /api/checkout/orders/:orderId/capture`
 
-Captures an approved order and returns PayPal's verified captured USD amount. Repeated callbacks are reconciled against PayPal order status.
+Captures an approved Sandbox order. A completed response contains `orderId`, `status`, `captured`, `amountCents`, and `currency`. A repeated callback can return the already completed result with `duplicate: true`.

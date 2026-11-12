@@ -1,29 +1,35 @@
 # Cloudflare deployment
 
-The target Worker is `needwise-hackathon`, configured in `wrangler.jsonc`. Deploying replaces the Worker code and static assets, so first preserve the current deployment or confirm it may be replaced.
+The repository targets the `needwise-hackathon` Worker at:
 
-## 1. Authenticate and verify the target
+https://needwise-hackathon.rwodzi1to3.workers.dev/
+
+Deployment is manual and replaces the code and static assets at that origin.
+
+## Prerequisites
+
+- Node.js 20.19 or later and npm
+- Access to the intended Cloudflare account
+- Channel3 API key
+- PayPal Sandbox REST app client ID and secret
+- Random basket-signing secret of at least 32 characters
+
+## Configure secrets
 
 ```bash
 npx wrangler whoami
 npx wrangler deployments list
-```
-
-Confirm the Cloudflare account contains `needwise-hackathon`. Do not paste an API token into source or chat.
-
-## 2. Configure secrets
-
-```bash
+npx wrangler secret put CHANNEL3_API_KEY
 npx wrangler secret put PAYPAL_CLIENT_ID
 npx wrangler secret put PAYPAL_CLIENT_SECRET
-npx wrangler secret put CHANNEL3_API_KEY
+npx wrangler secret put BASKET_SIGNING_SECRET
 ```
 
-Enter values in the hidden prompts. The AI binding requires no model API key. Channel3 live discovery requires the developer key; keep it out of `wrangler.jsonc`, source, and frontend variables.
+Enter values only through Wrangler's hidden prompts. Do not put them in `wrangler.jsonc`, `.env.example`, frontend variables, screenshots, or commits.
 
-If the deployed URL differs, update `APP_URL` in `wrangler.jsonc` before deploying so PayPal returns to the right origin.
+`PAYPAL_ENVIRONMENT` is fixed to `sandbox`. Update `APP_URL` before deployment if the public origin changes.
 
-## 3. Verify locally and package
+## Validate
 
 ```bash
 npm ci
@@ -34,10 +40,22 @@ npm run build
 npx wrangler deploy --dry-run
 ```
 
-## 4. Deploy intentionally
+## Deploy
 
 ```bash
-npx wrangler deploy
+npm run deploy
 ```
 
-Deployment is deliberately not part of CI. Afterwards, open the app, check `/api/status`, run a live catalogue search and inspect a retailer link, switch to demo mode, complete one Sandbox payment, and verify the order is `COMPLETED` in PayPal Developer Dashboard. A live retailer product must never be sent to the Sandbox checkout endpoint. Review Cloudflare Workers logs for errors without recording secrets or payer details.
+CI does not deploy.
+
+## Post-deployment checks
+
+1. Open the public origin.
+2. Check `/api/status`; its flags should match configured bindings and secrets.
+3. Run a live search and inspect a retailer link.
+4. Confirm the basket total is within budget.
+5. Approve one order with a PayPal Sandbox personal account.
+6. Confirm that NeedWise shows the test order and amount after return.
+7. Confirm `COMPLETED` in the PayPal Sandbox dashboard.
+
+This verifies one Sandbox payment to the configured test merchant. It does not verify retailer fulfillment, split payments, marketplace payouts, or real-money processing.
